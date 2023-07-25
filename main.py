@@ -202,7 +202,7 @@ class game:
 	
 	def hand_str(self, p_id:int) -> str:
 		if not self.state: return None
-		return "**Hands** (in play order):\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(p_id-len(self.players)+1,p_id)])+f"\n**Your ({self.players[p_id][0][1]}'s) hand**:\n"+show_own_hand(self.state.hands[p_id])
+		return "**Hands** (in play order):\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(p_id-len(self.players)+1,p_id)])+f"\n**Your ({self.players[p_id][0][1]}'s) hand**:\n"+show_own_hand(self.state.hands[p_id])+f"\nNote: letters may change. Cards will **move towards {CARD_EMOTES[0]}. New cards will enter **from {CARD_EMOTES[get_hand_size(self.state.p_count)-1]}**"
 	
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
@@ -210,7 +210,7 @@ class game:
 		])+"\n`/role spectate` to spectate someone."
 
 	def player_str(self, p_id:int) -> str:
-		return f"**hanabi** 🌺🔥🎆 (from {self.players[p_id][0][1]}'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join('<@!'+self.players[p_id][i][0]+'>' for i in range(1,len(self.players[p_id]))))}\nIf the main player leaves, they'll be replaced by a spectator.\nWhen it's your turn, you'll get pinged. Then `/move hint`, `/move play` or `/move discard`!"
+		return f"**hanabi** 🌺🔥🎆 (from {self.players[p_id][0][1]}'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join(f'<@!{self.players[p_id][i][0]}>' for i in range(1,len(self.players[p_id]))))}\nIf the main player leaves, they'll be replaced by a spectator.\nWhen it's your turn, you'll get pinged. Then `/move hint`, `/move play` or `/move discard`!"
 
 	def board_str(self) -> str:
 		if not self.state: return None
@@ -377,6 +377,7 @@ async def spectate(ctx:discord.ApplicationContext, player:discord.Option(discord
 			if g.state: await g.threads[i].remove_user({id:u[0]})
 	g.players[pid].append(u)
 	await ctx.respond(f"{u[1]} is now spectating {player.name}!")
+	if g.state: await g.threads[pid].add_user({id:u[0]})
 	await g.update_intro()
 
 
