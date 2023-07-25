@@ -1,5 +1,6 @@
 import discord
 import random
+import copy
 from typing import TypeAlias
 from enum import Enum
 
@@ -15,6 +16,7 @@ NUMS = 5
 COLS = 5
 HINTS = 8
 STRIKES = 3
+HISTORY = 3
 NUMS_EMOTES = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
 COLS_EMOTES = ["⬜","🟦","🟥","🟩","🟨"]
 CARD_EMOTES = ["🇦","🇧","🇨","🇩","🇪"]
@@ -45,7 +47,7 @@ def show_hand(h:list[h_card]) -> str:
 	h_str = "   ".join([BULB_EMOTE+HINT_EMOTES[c[1][0]]+HINT_EMOTES[c[1][1]] for c in h])
 	return c_str+"\n"+h_str
 def show_own_hand(h:list[h_card])->str:
-	return "   ".join([CARD_EMOTES[i]+(COLS_EMOTES[h[i][0][0]] if h[i][1][0] else HINT_EMOTES[0])+(NUMS_EMOTES[h[i][0][1]] if h[i][1][1] else HINT_EMOTES[0]) for i in range(len(h)-1,-1,-1)])
+	return "   ".join([CARD_EMOTES[i]+(COLS_EMOTES[h[i][0][0]] if h[i][1][0] else HINT_EMOTES[0])+(NUMS_EMOTES[h[i][0][1]] if h[i][1][1] else HINT_EMOTES[0]) for i in range(len(h))])#-1,-1,-1)])
 async def update_activity(): await bot.change_presence(activity=discord.Activity(name=f"/hanabi in {len(all_games)} channel{'' if len(all_games)==1 else 's'}",type=discord.ActivityType.playing))
 
 class Game_State(Enum):
@@ -55,6 +57,7 @@ class Game_State(Enum):
 
 class board_state:
 	def __init__(self,p_count:int):
+		self.locked=True
 		self.p_count=p_count
 		self.deck=[(i,max(0,(j-1)//2)) for i in range(COLS) for j in range(NUMS*2)]
 		random.shuffle(self.deck)
@@ -121,6 +124,7 @@ class game:
 		for i in range(len(self.players)):
 			p = self.players[i]
 			t = await self.channel.create_thread(name=f"{p[0][1]}'s POV",auto_archive_duration=60,type=discord.ChannelType.private_thread)
+			for p in self.players[i]: await t.add_user(await bot.fetch_user(p[0]))
 			self.threads.append(t)
 		await self.next()
 		
@@ -164,7 +168,7 @@ class game:
 				s.hints+=1
 				await self.channel.send(f"**Colour {HINT_TYPES[0][c[0]]} completed!** :fireworks: *(+1 hint, {s.hints} left)*")
 				if min(s.stacks)==NUMS: 
-					await self.channel.send("**You win!** :o")
+					await self.channel.send("**You win!** 🌺🔥🎆")
 					await self.end()
 		else:
 			if cc<0: await self.channel.send(f"**Invalid card!** Card {show_card((c[0],c[1]-1))} has not been played!")
@@ -178,7 +182,7 @@ class game:
 		self.state.strikes+=1
 		await self.channel.send(f"**Strike {self.state.strikes}/3!** :bomb:")
 		if self.state.strikes==STRIKES:
-			await self.channel.send(":boom: Game ended!")
+			await self.channel.send(":boom:")
 			await self.end()
 
 	def intro_str(self) -> str:
@@ -202,26 +206,46 @@ class game:
 	
 	def hand_str(self, p_id:int) -> str:
 		if not self.state: return None
-		return "**Hands** (in play order):\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(p_id-len(self.players)+1,p_id)])+f"\n**Your ({self.players[p_id][0][1]}'s) hand**:\n"+show_own_hand(self.state.hands[p_id])+f"\nNote: letters may change. Cards will **move towards {CARD_EMOTES[0]}. New cards will enter **from {CARD_EMOTES[get_hand_size(self.state.p_count)-1]}**"
+		return "**Hands** (in play order):\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(p_id-len(self.players)+1,p_id)])+f"\n**Your ({self.players[p_id][0][1]}'s) hand**:\n"+show_own_hand(self.state.hands[p_id])+f"\nNote: letters may change. Cards will **move towards** {CARD_EMOTES[0]}. New cards will **enter from** {CARD_EMOTES[get_hand_size(self.state.p_count)-1]}."
 	
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
 			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
-		])+"\n`/role spectate` to spectate someone."
+		])+"\nCheck your respective thread to see hands and play.\n`/role spectate` to spectate someone."
 
 	def player_str(self, p_id:int) -> str:
-		return f"**hanabi** 🌺🔥🎆 (from {self.players[p_id][0][1]}'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join(f'<@!{self.players[p_id][i][0]}>' for i in range(1,len(self.players[p_id]))))}\nIf the main player leaves, they'll be replaced by a spectator.\nWhen it's your turn, you'll get pinged. Then `/move hint`, `/move play` or `/move discard`!"
+		return f"**hanabi** 🌺🔥🎆 (from **{self.players[p_id][0][1]}**'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join(f'<@!{self.players[p_id][i][0]}>' for i in range(1,len(self.players[p_id]))))}\nIf the main player leaves, they'll be replaced by a spectator.\nWhen it's your turn, you'll get pinged. Then `/role hint`, `/role play` or `/role discard`!"
 
 	def board_str(self) -> str:
 		if not self.state: return None
-		return "**Board:**\n"+self.show_board()+f"\n**{self.state.hints}** hints left / **{self.state.strikes}/{STRIKES}** strikes / **{len(self.state.deck)}** cards left in deck / {self.players[self.state.turn][0][1]}'s turn\n\n**Discard pile:**\n"+self.show_discard()
+		return "**Board:**\n"+self.show_board()+f"\n**{self.state.hints}** hints left / **{self.state.strikes}/{STRIKES}** strikes / **{len(self.state.deck)}** cards left in deck{f' *(**{self.state.p_count-self.state.overtime+1}/{self.state.p_count}** moves left)*' if self.state.overtime else ''} / **{self.players[self.state.turn][0][1]}**'s turn\n\n**Discard pile:**\n"+self.show_discard()
 
 	async def next(self):
 		s = self.state
+		if not s: return
 		s.turn+=1
 		s.turn%=s.p_count
-		if not len(s.deck): s.overtime+=1
-		if s.overtime>=s.p_count: return await self.end()
+		if not len(s.deck): 
+			if not s.overtime: await self.channel.send(f"**Out of cards!** Each player can take one more turn.")
+			s.overtime+=1
+		if s.overtime>s.p_count: 
+			await self.end("All players have taken their last turn.")
+			return await self.end()
+		self.history.append(copy.deepcopy(s))
+		if len(self.history)>HISTORY+1: self.history.pop(0)
+		await self.end_turn()
+
+	async def undo(self, p_id:int):
+		if len(self.history)<2: return
+		self.history.pop()
+		s = self.state = copy.deepcopy(self.history[-1])
+		random.shuffle(s.deck)
+		await self.channel.send(f"**{self.players[p_id][0][1]} has undone the last move!** (and reshuffled the deck) *({len(self.history)-1} left in undo stack)*")
+		await self.end_turn()
+	
+	async def end_turn(self):
+		s = self.state
+		s.locked = False
 		for i in range(len(self.players)):
 			t = self.threads[i]
 			try: await self.player_msgs[i].edit(self.player_str(i))
@@ -240,7 +264,9 @@ class game:
 			await self.channel.send(f"**Game ended!** Thank you for playing :)\nScore: **{sum(self.state.stacks)}/25**")
 			self.board_msg=await self.channel.send(self.board_str())
 			if self.threads: 
-				for t in self.threads: await t.archive(True)
+				for t in self.threads: 
+					await t.archive(locked=True)
+		self.state = None
 
 all_games:dict[int,game] = {}
 bot = discord.Bot()
@@ -250,9 +276,10 @@ async def hanabi(ctx:discord.ApplicationContext):
 	if ctx.channel_id in all_games: return await ctx.respond("There's already an ongoing game!", ephemeral=True)
 	g = game(ctx.channel)
 	all_games[ctx.channel_id] = g
-	g.players = [] if PROD else [[(TEST_UID,TEST_UNAME)]]*2
+	g.players = [] if PROD else [[(TEST_UID,TEST_UNAME)],[(TEST_UID,TEST_UNAME),(TEST_UID,TEST_UNAME)]]
 	g.intro_msg = await ctx.send(g.intro_str())
 	await ctx.respond("Starting a new game!")
+	await update_activity()
 
 main = bot.create_group(name="game",description="Core game flow commands!")
 
@@ -265,7 +292,6 @@ async def begin(ctx:discord.ApplicationContext):
 	if len(g.players)>5: return await ctx.respond("Not sure how you got here, but you can't have >5 players.", ephemeral=True)
 	await ctx.respond(f"**Beginning** the game with **{len(g.players)} players!**")
 	await g.begin()
-	await update_activity()
 
 @main.command(description="End the game.",**TEST_PARAMS)
 async def end(ctx:discord.ApplicationContext):#, nuke:discord.Option(bool,description="nuke the threads")=False):
@@ -282,9 +308,20 @@ async def end(ctx:discord.ApplicationContext):#, nuke:discord.Option(bool,descri
 	# 		await ctx.respond("Deleting all threads.", ephemeral=True)
 	# 		for t in thr: await t.delete()
 
-# @main.command(description="(Undo last move.",**TEST_PARAMS)
-# async def undo(ctx:discord.ApplicationContext):
-	#
+@main.command(description="Undo last move.",**TEST_PARAMS)
+async def undo(ctx:discord.ApplicationContext):
+	try: g = all_games[ctx.channel.parent_id]
+	except: 
+		try: g = all_games[ctx.channel_id] 
+		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	if not g.state: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	u = (ctx.author.id,ctx.author.display_name)
+	if not u[0] in [p[0][0] for p in g.players]: await ctx.respond(u[1]+NOT_PLAYING_MSG, ephemeral=True)
+	u_id = [p[0][0] for p in g.players].index(u[0])
+	if len(g.history)<2: return await ctx.respond("You're out of undo history!", ephemeral=True)
+	if g.state.locked: return await ctx.respond("The game's still processing the last move!", ephemeral=True)
+	await ctx.respond("You undid the last move!")
+	await g.undo(u_id)
 
 show = bot.create_group("show", "Commands relating to showing game info.")
 @show.command(description="Show the board again. (in main channel)",**TEST_PARAMS)
@@ -327,7 +364,7 @@ player = bot.create_group("role", "Commands related to joining and leaving.")
 async def join(ctx:discord.ApplicationContext):
 	try: g = all_games[ctx.channel_id] 
 	except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
-	u = (ctx.author.id,ctx.author.name)
+	u = (ctx.author.id,ctx.author.display_name)
 	if g.state: 
 		return await ctx.respond("We're in the middle of a game. `/role spectate @player` to spectate someone!", ephemeral=True)
 	else:
@@ -346,53 +383,54 @@ async def leave(ctx:discord.ApplicationContext):
 	except: 
 		try: g = all_games[ctx.channel_id] 
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	u = (ctx.author.id,ctx.author.display_name)
 	if not u[0] in [q[0] for p in g.players for q in p]: await ctx.respond(u[1]+NOT_PLAYING_MSG, ephemeral=True)
-	u = (ctx.author.id,ctx.author.name)
-	p_id, n = [(i,j) for i in range(len(g.players)) for j in range(len(g.players[i])) if g.players[i][j][0]==u[0]]
+	p_id, n = [(i,j) for i in range(len(g.players)) for j in range(len(g.players[i])) if g.players[i][j][0]==u[0]][0]
 	p:list[tuple[int,str]] = g.players[p_id]
 	if not g.state or n or len(p)>1: 
 		p.pop(n)
 		await ctx.respond(f"{u[1]} has left the game. Goodbye!")
-		await g.threads[p_id].remove_user({id:u[0]})
+		await g.threads[p_id].remove_user(await bot.fetch_user(u[0]))
 		await g.update_intro()
 	else: await ctx.respond(f"You're the only one here! Ask someone to spectate and replace you with `/role spectate`, or `/hanabi end` to end the game for everyone.", ephemeral=True)
 
 @player.command(description="Spectate a specific player.",**TEST_PARAMS)
-async def spectate(ctx:discord.ApplicationContext, player:discord.Option(discord.User)):
+async def spectate(ctx:discord.ApplicationContext, player:discord.Option(discord.Member)):
 	try: g = all_games[ctx.channel.parent_id]
 	except: 
 		try: g = all_games[ctx.channel_id] 
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
-	u = (ctx.author.id,ctx.author.name)
+	u = (ctx.author.id,ctx.author.display_name)
 	if u[0] in [p[0][0] for p in g.players]:
 		if g.state: return await ctx.respond(f"You're already playing!", ephemeral=True)
 		else: g.players.pop([p[0][0] for p in g.players].index(u[0]))
 	if player.id not in [q[0] for p in g.players for q in p]:
-		return await ctx.respond(f"{player.name} isn't in the game!", ephemeral=True)
+		return await ctx.respond(f"{player.display_name} isn't in the game!", ephemeral=True)
 	pid = [q[0] for p in g.players for q in p].index(player.id)
 	for i in range(len(g.players)): 
 		l = [x[0] for x in g.players[i]]
 		if u[0] in l: 
 			g.players[i].pop(l.index(u[0]))
-			if g.state: await g.threads[i].remove_user({id:u[0]})
+			if g.state: await g.threads[i].remove_user(await bot.fetch_user(u[0]))
 	g.players[pid].append(u)
-	await ctx.respond(f"{u[1]} is now spectating {player.name}!")
-	if g.state: await g.threads[pid].add_user({id:u[0]})
+	await ctx.respond(f"{u[1]} is now spectating {player.display_name}!")
+	if g.state: await g.threads[pid].add_user(await bot.fetch_user(u[0]))
 	await g.update_intro()
 
 
 move = bot.create_group(name="turn",description="Commands related to taking your turn.")
 
 @move.command(description="Give another player a hint.",**TEST_PARAMS)
-async def hint(ctx:discord.ApplicationContext, player:discord.Option(discord.User), hint:discord.Option(choices=HINT_TYPES[0])):
+async def hint(ctx:discord.ApplicationContext, player:discord.Option(discord.Member), hint:discord.Option(choices=HINT_TYPES[0])):
 	try: ctx.channel.parent_id
 	except: return await ctx.respond(NOT_THREAD_MSG, ephemeral=True)
 	try: g = all_games[ctx.channel.parent_id] 
 	except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	if not g.state: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	if g.state.locked: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: s = g.threads.index(ctx.channel)
 	except: return await ctx.respond(WRONG_THREAD_MSG, ephemeral=True)
-	u, v = (ctx.author.id,ctx.author.name), (player.id,player.name)
+	u, v = (ctx.author.id,ctx.author.display_name), (player.id,player.display_name)
 	if u[0] != g.players[s][0][0]: return await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	if s!=g.state.turn: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: t = [g.players[i][0][0] if i!=s else 0 for i in range(len(g.players))].index(v[0])
@@ -402,6 +440,7 @@ async def hint(ctx:discord.ApplicationContext, player:discord.Option(discord.Use
 	h = HINT_TYPES[0].index(hint)
 	marked = g.get_hinted(t,h)
 	if not len(marked): return await ctx.respond(f"You have to hint at least one card.", ephemeral=True)
+	g.state.locked=True
 	await ctx.respond(f"You **hinted {v[1]}**'s card{'' if len(marked)==1 else 's'} {', '.join([CARD_EMOTES[x] for x in marked])} as **{HINT_TYPES[0][h]}**!")
 	await g.move_hint(s,t,h)
 
@@ -412,14 +451,16 @@ async def discard(ctx:discord.ApplicationContext, c_id:CARD_CHOICE_OPTION):
 	try: g = all_games[ctx.channel.parent_id] 
 	except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	if not g.state: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	if g.state.locked: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: s = g.threads.index(ctx.channel)
 	except: return await ctx.respond(WRONG_THREAD_MSG, ephemeral=True)
-	u = (ctx.author.id,ctx.author.name)
+	u = (ctx.author.id,ctx.author.display_name)
 	if u[0] != g.players[s][0][0]: return await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	if s!=g.state.turn: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
-	if g.state.hints==HINTS: return await ctx.respond(f"The number of hint tokens is already maximum!", ephemeral=True)
+	if g.state.hints>=HINTS: return await ctx.respond(f"The number of hint tokens is already maximum!", ephemeral=True)
 	try: c = g.state.get_card(s,c_id)
 	except: return await ctx.respond(f"You don't have that card!", ephemeral=True)
+	g.state.locked=True
 	await ctx.respond(f"You **discarded** card {CARD_EMOTES[c_id]}: **{show_card(c)}**!")
 	await g.move_discard(s,c_id)
 
@@ -430,14 +471,16 @@ async def play(ctx:discord.ApplicationContext, c_id:CARD_CHOICE_OPTION):
 	try: g = all_games[ctx.channel.parent_id] 
 	except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	if not g.state: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+	if g.state.locked: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: s = g.threads.index(ctx.channel)
 	except: return await ctx.respond(WRONG_THREAD_MSG, ephemeral=True)
-	u = (ctx.author.id,ctx.author.name)
+	u = (ctx.author.id,ctx.author.display_name)
 	if u[0] not in [x[0] for x in g.players[s]]: return await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	if s!=g.state.turn: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: c = g.state.get_card(s,c_id)
 	except: return await ctx.respond(f"You don't have that card!", ephemeral=True)
 	bad = g.state.comp_card(c)
+	g.state.locked=True
 	await ctx.respond(f"You **{'mis' if bad else ''}played** card {CARD_EMOTES[c_id]}: **{show_card(c)}**{'. :boom:' if bad else '!'}")
 	await g.move_play(s,c_id)
 

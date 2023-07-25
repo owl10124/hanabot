@@ -50,10 +50,12 @@ Hanabot operates using **Discord slash commands.**
 
 `/turn hint`, `/turn discard`, `/turn play`: for players to make their turn.
 
-(TODO) `/game undo`: undo the last move.
+`/game undo`: undo the last move.
 
 `/game end`: **forcefully** end the game.
 
 ## Changelog
+
+(26/7/23) v1.0.1: Spectating bugfixes; implementation of undo stack
 
 (25/7/23) v1.0.0: Initial commit
