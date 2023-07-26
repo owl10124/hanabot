@@ -271,7 +271,7 @@ class game:
 			if self.threads: 
 				for t in self.threads: 
 					for user_id in [q[0] for p in self.players for q in p]:
-						await t.add_user(bot.fetch_user(user_id))
+						await t.add_user(await bot.fetch_user(user_id))
 					await t.archive(locked=True)
 		self.state = None
 		await update_activity()
