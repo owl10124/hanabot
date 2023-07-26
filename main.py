@@ -16,7 +16,7 @@ NUMS = 5
 COLS = 5
 HINTS = 8
 STRIKES = 3
-HISTORY = 3
+HISTORY = 5
 NUMS_EMOTES = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
 COLS_EMOTES = ["⬜","🟦","🟥","🟩","🟨"]
 CARD_EMOTES = ["🇦","🇧","🇨","🇩","🇪"]
@@ -208,6 +208,10 @@ class game:
 		if not self.state: return None
 		return "**Hands** (in play order):\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(p_id-len(self.players)+1,p_id)])+f"\n**Your ({self.players[p_id][0][1]}'s) hand**:\n"+show_own_hand(self.state.hands[p_id])+f"\nNote: letters may change. Cards will **move towards** {CARD_EMOTES[0]}. New cards will **enter from** {CARD_EMOTES[get_hand_size(self.state.p_count)-1]}."
 	
+	def all_hands_str(self) -> str:
+		if not self.state: return None
+		return "**Final hands:**\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(len(self.players))])
+	
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
 			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
@@ -229,7 +233,7 @@ class game:
 			if not s.overtime: await self.channel.send(f"**Out of cards!** Each player can take one more turn.")
 			s.overtime+=1
 		if s.overtime>s.p_count: 
-			await self.end("All players have taken their last turn.")
+			await self.channel.send("All players have taken their last turn.")
 			return await self.end()
 		self.history.append(copy.deepcopy(s))
 		if len(self.history)>HISTORY+1: self.history.pop(0)
@@ -263,8 +267,11 @@ class game:
 		if self.state:
 			await self.channel.send(f"**Game ended!** Thank you for playing :)\nScore: **{sum(self.state.stacks)}/25**")
 			self.board_msg=await self.channel.send(self.board_str())
+			await self.channel.send(self.all_hands_str())
 			if self.threads: 
 				for t in self.threads: 
+					for user_id in [q[0] for p in self.players for q in p]:
+						await t.add_user(bot.fetch_user(user_id))
 					await t.archive(locked=True)
 		self.state = None
 		await update_activity()
