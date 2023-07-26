@@ -186,7 +186,7 @@ class game:
 			await self.end()
 
 	def intro_str(self) -> str:
-		return f"**hanabi** 🌺🔥🎆\nCurrently {len(self.players)} player{'' if len(self.players)==1 else 's'} registered (max 5)!\n"+"`/role join` to join, and `/game begin` to start.\n\n**Players:**\n"+'\n'.join([
+		return f"**hanabi** 🌺🔥🎆\nCurrently **{len(self.players)}** player{'' if len(self.players)==1 else 's'} (2-5) registered!\n"+"`/role join` to join, and `/game begin` to start.\n\n**Players:**\n"+'\n'.join([
 			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
 		])
 	
@@ -211,14 +211,14 @@ class game:
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
 			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
-		])+"\nCheck your respective thread to see hands and play.\n`/role spectate` to spectate someone."
+		])+"\nOpen your respective thread (**split-view** recommended) to see hands and play.\n`/role spectate` to spectate someone."
 
 	def player_str(self, p_id:int) -> str:
-		return f"**hanabi** 🌺🔥🎆 (from **{self.players[p_id][0][1]}**'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join(f'<@!{self.players[p_id][i][0]}>' for i in range(1,len(self.players[p_id]))))}\nIf the main player leaves, they'll be replaced by a spectator.\nWhen it's your turn, you'll get pinged. Then `/role hint`, `/role play` or `/role discard`!"
+		return f"**hanabi** 🌺🔥🎆 (from **{self.players[p_id][0][1]}**'s POV)\nPlayer: <@!{self.players[p_id][0][0]}>\nSpectators: {(', '.join(f'<@!{self.players[p_id][i][0]}>' for i in range(1,len(self.players[p_id]))))}\nWhen it's your turn, you'll get pinged. Then `/turn hint`, `/turn play` or `/turn discard`!\n***Tip:** On desktop, you can open the thread in **split-view**! Click the **three dots** in the top-right corner beside the searchbar, and select **Open in split view**.*"
 
 	def board_str(self) -> str:
 		if not self.state: return None
-		return "**Board:**\n"+self.show_board()+f"\n**{self.state.hints}** hints left / **{self.state.strikes}/{STRIKES}** strikes / **{len(self.state.deck)}** cards left in deck{f' *(**{self.state.p_count-self.state.overtime+1}/{self.state.p_count}** moves left)*' if self.state.overtime else ''} / **{self.players[self.state.turn][0][1]}**'s turn\n\n**Discard pile:**\n"+self.show_discard()
+		return "**Board:**\n"+self.show_board()+f"\n**{self.state.hints}** hint{'' if self.state.hints==1 else 's'} left / **{self.state.strikes}/{STRIKES}** strikes / **{len(self.state.deck)}** card{'' if len(self.state.deck)==1 else 's'} left in deck{f' *(**{self.state.p_count-self.state.overtime+1}/{self.state.p_count}** moves left)*' if self.state.overtime else ''} / **{self.players[self.state.turn][0][1]}**'s turn\n\n**Discard pile:**\n"+self.show_discard()
 
 	async def next(self):
 		s = self.state
@@ -267,6 +267,7 @@ class game:
 				for t in self.threads: 
 					await t.archive(locked=True)
 		self.state = None
+		await update_activity()
 
 all_games:dict[int,game] = {}
 bot = discord.Bot()
@@ -301,12 +302,6 @@ async def end(ctx:discord.ApplicationContext):#, nuke:discord.Option(bool,descri
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	await ctx.respond("Ending the game.")
 	await g.end()
-	await update_activity()
-	# if nuke:
-	# 	if g.threads:
-	# 		thr = g.threads
-	# 		await ctx.respond("Deleting all threads.", ephemeral=True)
-	# 		for t in thr: await t.delete()
 
 @main.command(description="Undo last move.",**TEST_PARAMS)
 async def undo(ctx:discord.ApplicationContext):
@@ -390,7 +385,7 @@ async def leave(ctx:discord.ApplicationContext):
 	if not g.state or n or len(p)>1: 
 		p.pop(n)
 		await ctx.respond(f"{u[1]} has left the game. Goodbye!")
-		await g.threads[p_id].remove_user(await bot.fetch_user(u[0]))
+		if g.state: await g.threads[p_id].remove_user(await bot.fetch_user(u[0]))
 		await g.update_intro()
 	else: await ctx.respond(f"You're the only one here! Ask someone to spectate and replace you with `/role spectate`, or `/hanabi end` to end the game for everyone.", ephemeral=True)
 
@@ -406,15 +401,15 @@ async def spectate(ctx:discord.ApplicationContext, player:discord.Option(discord
 		else: g.players.pop([p[0][0] for p in g.players].index(u[0]))
 	if player.id not in [q[0] for p in g.players for q in p]:
 		return await ctx.respond(f"{player.display_name} isn't in the game!", ephemeral=True)
-	pid = [q[0] for p in g.players for q in p].index(player.id)
+	p_id, n = [(i,j) for i in range(len(g.players)) for j in range(len(g.players[i])) if g.players[i][j][0]==player.id][0]
 	for i in range(len(g.players)): 
 		l = [x[0] for x in g.players[i]]
 		if u[0] in l: 
 			g.players[i].pop(l.index(u[0]))
 			if g.state: await g.threads[i].remove_user(await bot.fetch_user(u[0]))
-	g.players[pid].append(u)
+	g.players[p_id].append(u)
 	await ctx.respond(f"{u[1]} is now spectating {player.display_name}!")
-	if g.state: await g.threads[pid].add_user(await bot.fetch_user(u[0]))
+	if g.state: await g.threads[p_id].add_user(await bot.fetch_user(u[0]))
 	await g.update_intro()
 
 
