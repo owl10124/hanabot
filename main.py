@@ -187,7 +187,7 @@ class game:
 
 	def intro_str(self) -> str:
 		return f"**hanabi** 🌺🔥🎆\nCurrently **{len(self.players)}** player{'' if len(self.players)==1 else 's'} (2-5) registered!\n"+"`/role join` to join, and `/game begin` to start.\n\n**Players:**\n"+'\n'.join([
-			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
+			f"{i+1}. **"+self.players[i][0][1]+"**"+(" *(spectated by "+', '.join(["**"+q[1]+"**" for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
 		])
 	
 	async def update_intro(self) -> str:
@@ -214,7 +214,7 @@ class game:
 	
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
-			f"{i+1}. "+self.players[i][0][1]+(" *(spectated by "+', '.join([q[1] for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
+			f"{i+1}. **"+self.players[i][0][1]+"**"+(" *(spectated by "+', '.join(["**"+q[1]+"**" for q in self.players[i][1:]])+")*" if len(self.players[i])>1 else '') for i in range(len(self.players))
 		])+"\nOpen your respective thread (**split-view** recommended) to see hands and play.\n`/role spectate` to spectate someone."
 
 	def player_str(self, p_id:int) -> str:
@@ -244,7 +244,7 @@ class game:
 		self.history.pop()
 		s = self.state = copy.deepcopy(self.history[-1])
 		random.shuffle(s.deck)
-		await self.channel.send(f"**{self.players[p_id][0][1]} has undone the last move!** (and reshuffled the deck) *({len(self.history)-1} left in undo stack)*")
+		await self.channel.send(f"**{self.players[p_id][0][1]}** has **undone the last move!** (and reshuffled the deck) *({len(self.history)-1} left in undo stack)*")
 		await self.end_turn()
 	
 	async def end_turn(self):
@@ -269,9 +269,12 @@ class game:
 			self.board_msg=await self.channel.send(self.board_str())
 			await self.channel.send(self.all_hands_str())
 			if self.threads: 
-				for t in self.threads: 
-					for user_id in [q[0] for p in self.players for q in p]:
-						await t.add_user(await bot.fetch_user(user_id))
+				for i in range(len(self.players)):
+					t = self.threads[i]
+					await t.send(f"**Game over!** Thanks for playing, **{self.players[i][0][1]}**.")
+					self.hand_msgs[i]=await t.send(self.hand_str(i))
+					for p in self.players:
+						for u in p: await t.add_user(await bot.fetch_user(u[0]))
 					await t.archive(locked=True)
 		self.state = None
 		await update_activity()
@@ -318,7 +321,7 @@ async def undo(ctx:discord.ApplicationContext):
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	if not g.state: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	u = (ctx.author.id,ctx.author.display_name)
-	if not u[0] in [p[0][0] for p in g.players]: await ctx.respond(u[1]+NOT_PLAYING_MSG, ephemeral=True)
+	if not u[0] in [p[0][0] for p in g.players]: await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	u_id = [p[0][0] for p in g.players].index(u[0])
 	if len(g.history)<2: return await ctx.respond("You're out of undo history!", ephemeral=True)
 	if g.state.locked: return await ctx.respond("The game's still processing the last move!", ephemeral=True)
@@ -376,7 +379,7 @@ async def join(ctx:discord.ApplicationContext):
 			l = [x[0] for x in p]
 			if u[0] in l: p.pop(l.index(u[0]))
 		g.players.append([u])
-		await ctx.respond(f"{u[1]} has joined the game!")
+		await ctx.respond(f"**{u[1]}** has joined the game!")
 		await g.update_intro()
 
 @player.command(description="Leave the game. (Someone must be spectating you.)",**TEST_PARAMS)
@@ -386,12 +389,12 @@ async def leave(ctx:discord.ApplicationContext):
 		try: g = all_games[ctx.channel_id] 
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 	u = (ctx.author.id,ctx.author.display_name)
-	if not u[0] in [q[0] for p in g.players for q in p]: await ctx.respond(u[1]+NOT_PLAYING_MSG, ephemeral=True)
+	if not u[0] in [q[0] for p in g.players for q in p]: await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	p_id, n = [(i,j) for i in range(len(g.players)) for j in range(len(g.players[i])) if g.players[i][j][0]==u[0]][0]
 	p:list[tuple[int,str]] = g.players[p_id]
 	if not g.state or n or len(p)>1: 
 		p.pop(n)
-		await ctx.respond(f"{u[1]} has left the game. Goodbye!")
+		await ctx.respond(f"**{u[1]}** has left the game. Goodbye!")
 		if g.state: await g.threads[p_id].remove_user(await bot.fetch_user(u[0]))
 		await g.update_intro()
 	else: await ctx.respond(f"You're the only one here! Ask someone to spectate and replace you with `/role spectate`, or `/hanabi end` to end the game for everyone.", ephemeral=True)
@@ -415,7 +418,7 @@ async def spectate(ctx:discord.ApplicationContext, player:discord.Option(discord
 			g.players[i].pop(l.index(u[0]))
 			if g.state: await g.threads[i].remove_user(await bot.fetch_user(u[0]))
 	g.players[p_id].append(u)
-	await ctx.respond(f"{u[1]} is now spectating {player.display_name}!")
+	await ctx.respond(f"**{u[1]}** is now spectating {player.display_name}!")
 	if g.state: await g.threads[p_id].add_user(await bot.fetch_user(u[0]))
 	await g.update_intro()
 
@@ -436,7 +439,7 @@ async def hint(ctx:discord.ApplicationContext, player:discord.Option(discord.Mem
 	if u[0] != g.players[s][0][0]: return await ctx.respond(NOT_PLAYING_MSG, ephemeral=True)
 	if s!=g.state.turn: return await ctx.respond(NOT_TURN_MSG, ephemeral=True)
 	try: t = [g.players[i][0][0] if i!=s else 0 for i in range(len(g.players))].index(v[0])
-	except: return await ctx.respond(f"{v[1]} isn't playing!", ephemeral=True)
+	except: return await ctx.respond(f"**{v[1]}** isn't playing!", ephemeral=True)
 	if s==t: return await ctx.respond(f"You can't hint yourself!", ephemeral=True)
 	if not g.state.hints: return await ctx.respond(f"There aren't any hint tokens left! :(", ephemeral=True)
 	h = HINT_TYPES[0].index(hint)
