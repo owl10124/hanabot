@@ -4,7 +4,7 @@ import copy
 from typing import TypeAlias
 from enum import Enum
 
-PROD = False
+PROD = True
 
 if not PROD:
 	with open("test_data") as f:
