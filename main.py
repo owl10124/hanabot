@@ -4,7 +4,7 @@ import copy
 from typing import TypeAlias
 from enum import Enum
 
-PROD = True
+PROD = False
 
 if not PROD:
 	with open("test_data") as f:
@@ -19,6 +19,7 @@ STRIKES = 3
 HISTORY = 5
 NUMS_EMOTES = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣"]
 COLS_EMOTES = ["⬜","🟦","🟥","🟩","🟨"]
+COLS_EMOTES_ALT = ["🔑","🌿","🔥","🌊","🗻"]
 CARD_EMOTES = ["🇦","🇧","🇨","🇩","🇪"]
 HINT_EMOTES = ["▫️","🔸"]
 HIDDEN_EMOTE = "⬛"
@@ -26,6 +27,10 @@ BULB_EMOTE = ":bulb:"
 TEST_PARAMS = {} if PROD else {"guild_ids":[TEST_GUILD], "guild_only":True}
 HINT_TYPES = [
 	['⬜ white', '🟦 blue', '🟥 red', '🟩 green', '🟨 yellow', '[1] one', '[2] two', '[3] three', '[4] four', '[5] five'],
+	[(i,-1) for i in range(COLS)] + [(-1,i) for i in range(NUMS)]
+]
+HINT_TYPES_ALT = [
+	["🔑 metal","🌿 wood","🔥 fire","🌊 water","🗻 earth", '[1] one', '[2] two', '[3] three', '[4] four', '[5] five'],
 	[(i,-1) for i in range(COLS)] + [(-1,i) for i in range(NUMS)]
 ]
 
@@ -49,11 +54,6 @@ def show_hand(h:list[h_card]) -> str:
 def show_own_hand(h:list[h_card])->str:
 	return "   ".join([CARD_EMOTES[i]+(COLS_EMOTES[h[i][0][0]] if h[i][1][0] else HINT_EMOTES[0])+(NUMS_EMOTES[h[i][0][1]] if h[i][1][1] else HINT_EMOTES[0]) for i in range(len(h))])#-1,-1,-1)])
 async def update_activity(): await bot.change_presence(activity=discord.Activity(name=f"/hanabi in {len(all_games)} channel{'' if len(all_games)==1 else 's'}",type=discord.ActivityType.playing))
-
-class Game_State(Enum):
-	WAITING=0
-	ONGOING=1
-	OVER=2
 
 class board_state:
 	def __init__(self,p_count:int):
@@ -210,7 +210,7 @@ class game:
 	
 	def all_hands_str(self) -> str:
 		if not self.state: return None
-		return "**Final hands:**\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand:\n"+show_hand(self.state.hands[j]) for j in range(len(self.players))])
+		return "**Final hands:**\n"+"\n".join([f"**{self.players[j][0][1]}**'s hand (<#{self.threads[j].id}>):\n"+show_hand(self.state.hands[j]) for j in range(len(self.players))])
 	
 	def all_players_str(self):
 		return f"**Players:**\n"+'\n'.join([
@@ -357,12 +357,13 @@ async def players(ctx:discord.ApplicationCommand):
 		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
 		await ctx.respond("Showing all players…")
 		g.all_players_msg=await g.channel.send(g.all_players_str())
-	try: g = all_games[ctx.channel.parent_id] 
-	except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
-	try: s = g.threads.index(ctx.channel)
-	except: return await ctx.respond(WRONG_THREAD_MSG, ephemeral=True)
-	await ctx.respond("Showing players in channel…")
-	g.player_msgs[s]=await g.threads[s].send(g.player_str(s))
+	else:
+		try: g = all_games[ctx.channel.parent_id] 
+		except: return await ctx.respond(NO_GAME_MSG, ephemeral=True)
+		try: s = g.threads.index(ctx.channel)
+		except: return await ctx.respond(WRONG_THREAD_MSG, ephemeral=True)
+		await ctx.respond("Showing players in channel…")
+		g.player_msgs[s]=await g.threads[s].send(g.player_str(s))
 
 player = bot.create_group("role", "Commands related to joining and leaving.")
 @player.command(description="Join the game. (Only possible before game start, or if spectated player leaves.)",**TEST_PARAMS)

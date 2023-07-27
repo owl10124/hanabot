@@ -56,6 +56,8 @@ Hanabot operates using **Discord slash commands.**
 
 ## Changelog
 
+(27/7/23) v1.0.2: Cleanups, showing things on game end
+
 (26/7/23) v1.0.1: Spectating bugfixes; implementation of undo stack
 
 (25/7/23) v1.0.0: Initial commit
